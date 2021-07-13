@@ -2,8 +2,8 @@
  * @Author       : daiwei
  * @Date         : 2021-07-13 11:07:28
  * @LastEditors  : daiwei
- * @LastEditTime : 2021-07-13 17:43:50
- * @FilePath     : \vue-bpmn-flow\src\views\bpmn\index.vue
+ * @LastEditTime : 2021-07-13 19:27:51
+ * @FilePath     : \VUE-BPMN-FLOW\src\views\bpmn\index.vue
 -->
 <template>
   <div class="container">
@@ -60,6 +60,7 @@ export default {
       fileList: [],
       bpmData: new BpmData(), //继承引用的实例对象
       zonm:1,//记录放大缩小的比例
+      form:{},//这个form应该是从panel里面配置好的数据
     };
   },
   methods: {
@@ -183,7 +184,9 @@ export default {
         this.bpmnModeler.createDiagram(() => {
             this.bpmnModeler.get("cavans").zoom("fit-viewport");
         });
-      } 
+      }
+      /**监听元素的事件 */
+      this.addEventBusListener();
     },
     /**调整左侧工具栏排版*/
     adjustPalette() {
@@ -237,6 +240,125 @@ export default {
         console.log(e);
       }
     },
+    /**监听元素方法 */
+    addEventBusListener() {
+      let eventBus = this.bpmnModeler.get('eventBus');
+      // 注册节点事件，eventTypes中可以写多个事件
+      let eventTypes = ['element.click'];
+      eventTypes.forEach((eventType) => {
+        eventBus.on(eventType, (e) => {
+          let {element} = e;
+          if (!element.parent) return;
+          if (!e || element.type === 'bpmn:Process') {
+            return false;
+          } else {
+            if (eventType === 'element.click') {
+              let businessObject = element.businessObject || element;
+              this.splitBusiness2Json(businessObject);
+            }
+          }
+        });
+      });
+    },
+    /**数据插入进去 */
+    splitBusiness2Json(businessObject) {
+        let formData = {};
+        // 此时这个id必须要，因为json生成xml时，节点id是找到节点的唯一标识
+        formData['id'] = businessObject.id;
+        let params = this.getExtensionElement(businessObject, 'camunda:InputOutput');
+        if (params && params.inputParameters) {
+          params.inputParameters.forEach((item) => {
+            let definition = item.definition;
+            if (definition) {
+              if (definition.$type === 'camunda:List') {
+                let arr = [];
+                definition.items.forEach((itemsItem) => {
+                  arr.push(itemsItem.value);
+                });
+                formData[item.name] = arr;
+              } else if (definition.$type === 'camunda:Map') {
+                let obj = {};
+                if (definition.entries) {
+                  definition.entries.forEach((entriesItem) => {
+                    obj[entriesItem.key] = entriesItem.value;
+                  });
+                  formData[item.name] = obj;
+                }
+              }
+            } else {
+              formData[item.name] = item.value;
+            }
+          });
+        }
+        this.form = formData;
+      },
+      json2xml() {
+        const elementRegistry = this.bpmnModeler.get('elementRegistry');
+        const bpmnFactory = this.bpmnModeler.get('bpmnFactory');
+        const modeling = this.bpmnModeler.get('modeling');
+        // “elementRegistry.get” 根据节点id找到节点实例，为其在xml写入添加属性
+        const element = elementRegistry.get(this.form.id);
+        // 存在找不到节点的情况，那说明节点在点击后，被删除了
+        if (element !== undefined) {
+          const extensionElements = bpmnFactory.create('bpmn:ExtensionElements');
+          const inputOutput = bpmnFactory.create('camunda:InputOutput');
+          extensionElements.values = [inputOutput];
+          inputOutput.inputParameters = [];
+          // 遍历this.form，将其各个属性进行循环写入extensionElements
+          for (const nodeKey in this.form) {
+            let inputParameter = null;
+            // 1、属性值为单个值，即布尔、字符串、数字
+            if (
+              (typeof this.form[nodeKey] === 'string' && this.form[nodeKey] !== '') ||
+              typeof this.form[nodeKey] === 'boolean' ||
+              typeof this.form[nodeKey] === 'number'
+            ) {
+              inputParameter = bpmnFactory.create('camunda:InputParameter', {
+                  name: nodeKey,
+                  // 布尔值和数字影响生成xml，都要转成字符串
+                  value: typeof this.form[nodeKey] === 'string' ? this.form[nodeKey] : JSON.stringify(this.form[nodeKey])
+                }
+              );
+              //  2.属性值为数组或对象
+            } else if (typeof this.form[nodeKey] === 'object') {
+              // 2.1 属性值为数组，对应案例中 checkbox多选
+              if (this.form[nodeKey] instanceof Array) {
+                if (this.form[nodeKey].length) {
+                  inputParameter = bpmnFactory.create('camunda:InputParameter', {name: nodeKey});
+                  const list = bpmnFactory.create('camunda:List');
+                  list.items = [];
+                  this.form[nodeKey].forEach((item) => {
+                    const itemValue = bpmnFactory.create('camunda:Value', {value: item});
+                    list.items.push(itemValue);
+                  });
+                  inputParameter.definition = list;
+                }
+              } else {
+                // 2.2 此时属性值是对象，对应案例中 '详细信息'
+                if (JSON.stringify(this.form[nodeKey]) === '{}') continue;
+                inputParameter = bpmnFactory.create('camunda:InputParameter', {name: nodeKey});
+                const map = bpmnFactory.create('camunda:Map');
+                map.entries = [];
+                for (const mapKey in this.form[nodeKey]) {
+                  if (this.form[nodeKey][mapKey] !== '') {
+                    const itemValue = bpmnFactory.create('camunda:Entry', {
+                      key: mapKey,
+                      value: this.form[nodeKey][mapKey]
+                    });
+                    map.entries.push(itemValue);
+                  }
+                  inputParameter.definition = map;
+                }
+              }
+            }
+            inputParameter !== null && inputOutput.inputParameters.push(inputParameter);
+          }
+          modeling.updateProperties(element, {extensionElements});
+        }
+        this.bpmnModeler.saveXML({format: true}, (err, xml) => {
+          console.log(xml);
+        });
+      },
     /**后退方法 */
     handleUndo () {
         /**获取节点的控制板 */
