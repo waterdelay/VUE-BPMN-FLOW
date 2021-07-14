@@ -2,12 +2,29 @@
  * @Author       : daiwei
  * @Date         : 2021-07-13 11:07:28
  * @LastEditors  : daiwei
- * @LastEditTime : 2021-07-13 19:27:51
+ * @LastEditTime : 2021-07-14 20:01:41
  * @FilePath     : \VUE-BPMN-FLOW\src\views\bpmn\index.vue
 -->
 <template>
   <div class="container">
     <div class="btn-group">
+      <el-tooltip class="item" effect="dark" content="导入" placement="bottom">
+        <el-upload
+        style="display: inline-block;margin-right: 10px;"
+        :file-list="fileList"
+        class="upload-demo"
+        action=""
+        :auto-upload="false"
+        :show-file-list="false"
+        :http-request="httpRequest"
+        :on-change="handleOnchangeFile"
+        :on-remove="handleRemove"
+        :before-remove="beforeRemove"
+      >
+        <el-button type="primary" circle icon="el-icon-upload"></el-button>
+      </el-upload>
+        
+      </el-tooltip>
       <el-tooltip class="item" effect="dark" content="后退" placement="bottom">
         <el-button type="primary" icon="el-icon-d-arrow-left" circle @click="handleUndo"></el-button>
       </el-tooltip>
@@ -47,7 +64,7 @@ import BpmnModeler from "bpmn-js/lib/Modeler";
 import BpmnViewer from 'bpmn-js/lib/Viewer';
 import camundaExtension from "@/utils/camunda.json";
 import BpmData from "@/utils/BpmData.js";
-import panel from "./components/panel"
+const  panel = () => import('./components/panel')
 export default {
   name: "bpmn",
   components:{
@@ -254,7 +271,7 @@ export default {
           } else {
             if (eventType === 'element.click') {
               let businessObject = element.businessObject || element;
-              this.splitBusiness2Json(businessObject);
+              // this.splitBusiness2Json(businessObject);
             }
           }
         });
@@ -264,33 +281,33 @@ export default {
     splitBusiness2Json(businessObject) {
         let formData = {};
         // 此时这个id必须要，因为json生成xml时，节点id是找到节点的唯一标识
-        formData['id'] = businessObject.id;
-        let params = this.getExtensionElement(businessObject, 'camunda:InputOutput');
-        if (params && params.inputParameters) {
-          params.inputParameters.forEach((item) => {
-            let definition = item.definition;
-            if (definition) {
-              if (definition.$type === 'camunda:List') {
-                let arr = [];
-                definition.items.forEach((itemsItem) => {
-                  arr.push(itemsItem.value);
-                });
-                formData[item.name] = arr;
-              } else if (definition.$type === 'camunda:Map') {
-                let obj = {};
-                if (definition.entries) {
-                  definition.entries.forEach((entriesItem) => {
-                    obj[entriesItem.key] = entriesItem.value;
-                  });
-                  formData[item.name] = obj;
-                }
-              }
-            } else {
-              formData[item.name] = item.value;
-            }
-          });
-        }
-        this.form = formData;
+        // formData['id'] = businessObject.id;
+        // let params = this.getExtensionElement(businessObject, 'camunda:InputOutput');
+        // if (params && params.inputParameters) {
+        //   params.inputParameters.forEach((item) => {
+        //     let definition = item.definition;
+        //     if (definition) {
+        //       if (definition.$type === 'camunda:List') {
+        //         let arr = [];
+        //         definition.items.forEach((itemsItem) => {
+        //           arr.push(itemsItem.value);
+        //         });
+        //         formData[item.name] = arr;
+        //       } else if (definition.$type === 'camunda:Map') {
+        //         let obj = {};
+        //         if (definition.entries) {
+        //           definition.entries.forEach((entriesItem) => {
+        //             obj[entriesItem.key] = entriesItem.value;
+        //           });
+        //           formData[item.name] = obj;
+        //         }
+        //       }
+        //     } else {
+        //       formData[item.name] = item.value;
+        //     }
+        //   });
+        // }
+        // this.form = formData;
       },
       json2xml() {
         const elementRegistry = this.bpmnModeler.get('elementRegistry');
@@ -367,6 +384,20 @@ export default {
     /**前进 */
     handleRedo () {
         this.bpmnModeler.get('commandStack').redo();
+    },
+    /**移除 */
+    handleRemove (file) {
+      for (let i = 0; i < this.fileList.length; i++) {
+        if (file.name === this.fileList[i].name) {
+          this.fileList.splice(i, 1)
+        }
+      }
+    },
+    /**移除前 */
+    beforeRemove (file) {
+      return this.$confirm(`确定移除 ${file.name}？`)
+    },
+    httpRequest(file){
     },
     /**导入方法bpmn 得需要elemen上传组件 */
     handleOnchangeFile (file) {
@@ -445,6 +476,9 @@ export default {
       container: this.containerEl,
     //   moddleExtensions: { camunda: camundaExtension }
     });
+    this.BpmnViewer = new BpmnViewer({
+      container: this.containerEl,
+    })
     this.create();
   }
 };
