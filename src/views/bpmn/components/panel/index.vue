@@ -2,7 +2,7 @@
  * @Author       : daiwei
  * @Date         : 2021-07-13 17:18:14
  * @LastEditors  : daiwei
- * @LastEditTime : 2021-07-14 21:03:37
+ * @LastEditTime : 2021-07-15 17:00:43
  * @FilePath     : \VUE-BPMN-FLOW\src\views\bpmn\components\panel\index.vue
 -->
 <template>
@@ -80,20 +80,23 @@ export default {
         label:'xxxx',
       },
       currentNode:'',/**记录当前节点的id信息 */
+      canvansEle:{},//记录点击画布的数据节点
     };
   },
   mounted() {
       this.handleModeler();
       this.handleViews();
+      this.removeModelerListener();
   },
   methods: {
-    /**监听画板 */
+    /**监听modeler */
     handleViews(){
       this.modeler.on("element.click", e => {
         let {element} = e;
         if(!e || element.type !== 'bpmn:Process'){
           return false;
         }else{
+          this.canvansEle = this.judgeNodeType(e.element);
           this.elementNode = this.judgeNodeType(e.element);
           this.getProcessInfo()
           console.log(e)
@@ -109,6 +112,19 @@ export default {
           continue
         }
       }
+    },
+    /**监听modeler删除事件 */
+    removeModelerListener(){
+      let _this = this;
+      this.modeler.on('shape.removed',e =>{
+        let removeShapeId = e.element ?e.element.id:'';
+        console.log(e,'5555',removeShapeId,this.modeler)
+        if(this.flowObj[removeShapeId]){
+          this.elementNode = this.canvansEle?this.canvansEle:{}
+          this.getProcessInfo();
+          delete(this.flowObj[removeShapeId])
+        }
+      })
     },
     /**事件监听节点元素 */
     handleModeler() {
@@ -151,6 +167,33 @@ export default {
           break;
         case 'bpmn:Task'://任务框
           e.nodeType = 'Task';
+          break;
+        case 'bpmn:UserTask'://用户任务框
+          e.nodeType = 'Task';
+          break;
+        case 'bpmn:SendTask'://发送任务框
+          e.nodeType = 'Task';
+          break;
+        case 'bpmn:ReceiveTask'://接收任务框
+          e.nodeType = 'Task';
+          break;
+        case 'bpmn:ManualTask'://手动任务框
+          e.nodeType = 'Task';
+          break;
+        case 'bpmn:BusinessRuleTask'://商业规则任务框
+          e.nodeType = 'Task';
+          break;
+        case 'bpmn:ServiceTask'://服务任务框
+          e.nodeType = 'Task';
+          break; 
+        case 'bpmn:ScriptTask'://脚本任务框
+          e.nodeType = 'Task';
+          break;
+        case 'bpmn:CallActivity'://CallActivity公司
+          e.nodeType = 'Task';
+          break;
+        case 'bpmn:Transaction'://交易
+          e.nodeType = 'Transaction';
           break;
         case 'bpmn:SubProcess'://子流程
           e.nodeType = 'SubProcess';
